@@ -1,0 +1,7 @@
+[build]
+  base = "messenger-frontend"
+  command = "npm run build"
+  publish = "messenger-frontend/dist"
+
+[build.environment]
+  NODE_VERSION = "18"
