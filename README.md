@@ -4,8 +4,8 @@
 **Group: SE-2431**
 
 **Live Links:**
-- Backend: `TBD`
-- Frontend: `TBD`
+- Backend: `https://finalprojectweb2.onrender.com`
+- Frontend: `https://messangervibegram.netlify.app/`
 
 
 ## 1. Project Overview
