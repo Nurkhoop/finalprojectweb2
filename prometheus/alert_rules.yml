@@ -1,0 +1,25 @@
+groups:
+  - name: messenger-alerts
+    rules:
+      - alert: BackendDownCritical
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backend service is down
+          description: Backend metrics endpoint is unreachable for more than 1 minute.
+
+      - alert: HighErrorRateWarning
+        expr: |
+          (
+            sum(rate(app_http_requests_total{status_code=~"[45].."}[5m]))
+            /
+            clamp_min(sum(rate(app_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High backend error rate
+          description: More than 5% of backend requests are failing with 4xx or 5xx errors.

@@ -57,23 +57,28 @@ exports.login = async (req, res) => {
     const normalizedEmail = email?.toLowerCase().trim();
 
     if (!normalizedEmail || typeof password !== "string" || !password) {
+      req.app.locals.trackLoginAttempt?.("failure");
       return res.status(400).json({ message: "Email and password required" });
     }
 
     const user = await User.findOne({ email: normalizedEmail });
     if (!user || user.isDeleted) {
+      req.app.locals.trackLoginAttempt?.("failure");
       return res.status(401).json({ message: "Invalid credentials" });
     }
     if (user.isBlocked) {
+      req.app.locals.trackLoginAttempt?.("failure");
       return res.status(403).json({ message: "User is blocked" });
     }
 
     if (!user.password) {
+      req.app.locals.trackLoginAttempt?.("failure");
       return res.status(500).json({ message: "User password not set" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      req.app.locals.trackLoginAttempt?.("failure");
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
@@ -86,6 +91,7 @@ exports.login = async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    req.app.locals.trackLoginAttempt?.("success");
     res.json({
       token,
       user: {
@@ -97,6 +103,7 @@ exports.login = async (req, res) => {
       }
     });
   } catch (error) {
+    req.app.locals.trackLoginAttempt?.("failure");
     res.status(500).json({ message: error.message });
   }
 };

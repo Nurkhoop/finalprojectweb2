@@ -45,6 +45,7 @@ exports.createMessage = async (req, res) => {
     } catch (error) {
       // socket not available
     }
+    req.app.locals.trackMessageCreated?.();
     res.status(201).json(message);
   } catch (error) {
     res.status(500).json({ message: error.message });

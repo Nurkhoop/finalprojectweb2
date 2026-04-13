@@ -1,0 +1,75 @@
+services:
+  frontend:
+    build:
+      context: ./messenger-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5001/api
+        VITE_SOCKET_URL: http://localhost:5001
+    container_name: messenger-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: messenger-backend
+    depends_on:
+      - mongodb
+    environment:
+      PORT: 5001
+      MONGO_URI: mongodb://mongodb:27017/messagesDB
+      JWT_SECRET: supersecretkey
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: messenger-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: messenger-prometheus
+    depends_on:
+      - backend
+      - node-exporter
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: messenger-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: messenger-node-exporter
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  grafana_data:

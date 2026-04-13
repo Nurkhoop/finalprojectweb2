@@ -198,11 +198,19 @@ finalprojectweb2/
 
 ## 6. Environment Variables
 
-**Backend `.env`**
+**Backend `.env` for normal local run**
 ```
 PORT=5001
-MONGO_URI=your_mongodb_atlas_connection_string
+MONGO_URI=mongodb://localhost:27017/messagesDB
 JWT_SECRET=your_secret_key
+```
+
+If you deploy the backend to Render/Railway/other cloud, set `MONGO_URI` there to your MongoDB Atlas connection string.
+
+If you run with Docker Compose, the backend uses the internal Docker Mongo service automatically:
+
+```text
+mongodb://mongodb:27017/messagesDB
 ```
 
 **Frontend `.env`** (create from `.env.example`)
@@ -232,7 +240,7 @@ npm install
 3. Create `.env` in root and add:
 ```
 PORT=5001
-MONGO_URI=your_mongodb_atlas_connection_string
+MONGO_URI=mongodb://localhost:27017/messagesDB
 JWT_SECRET=your_secret_key
 ```
 4. Start server:
@@ -258,6 +266,172 @@ npm install
 cp .env.example .env
 ```
 4. Start frontend:
+
+---
+
+## 8. SRE Midterm Notes
+
+This section describes the reliability part of the project in a simple and practical way.
+
+### 8.1 Services in Docker Compose
+
+The project includes the following services in `docker-compose.yml`:
+
+- Frontend (`messenger-frontend`)
+- Backend (`messenger-backend`)
+- Database (`messenger-mongodb`)
+- Prometheus
+- Grafana
+- Node Exporter
+
+This means the application and the observability stack can run together in one environment.
+
+### 8.2 Custom SLIs
+
+For this messenger application, the most useful indicators are:
+
+**SLI 1: API Availability**
+
+This shows how often the backend answers requests successfully.
+
+Formula:
+
+```text
+Availability SLI = Successful requests / Total requests
+```
+
+In Prometheus, this can be calculated as:
+
+```promql
+1 - (
+  sum(rate(app_http_requests_total{status_code=~"5.."}[30d]))
+  /
+  sum(rate(app_http_requests_total[30d]))
+)
+```
+
+**SLI 2: API Latency**
+
+This shows how fast the backend responds to requests.
+
+Formula:
+
+```text
+Latency SLI = Percentage of requests completed under target response time
+```
+
+For this project, the target can be measured with the existing request duration histogram.
+The dashboard already shows `P95 latency`, which means 95% of requests should stay below the chosen threshold.
+
+Prometheus query already used in Grafana:
+
+```promql
+histogram_quantile(0.95, sum(rate(app_http_request_duration_seconds_bucket[5m])) by (le))
+```
+
+### 8.3 SLO Targets
+
+The following SLOs are realistic for a student messenger project:
+
+- **SLO 1: Availability**
+  The backend should be available **99.5%** of the time in one month.
+
+- **SLO 2: Latency**
+  At least **95%** of requests should finish in **less than 500 ms**.
+
+These goals are realistic because the app is not a banking or medical system, but it should still feel stable and responsive for users.
+
+### 8.4 Monthly Error Budget
+
+For a 30-day month:
+
+```text
+30 days = 30 x 24 x 60 = 43,200 minutes
+```
+
+If the availability SLO is **99.5%**, then the allowed failure time is:
+
+```text
+Error budget = 0.5% of 43,200 minutes
+             = 0.005 x 43,200
+             = 216 minutes
+```
+
+So the system may be unavailable for about:
+
+- **216 minutes per month**
+- **3.6 hours per month**
+
+For latency, if the SLO says that **95%** of requests must stay under **500 ms**, then:
+
+- up to **5%** of requests may be slower than 500 ms
+- if more than 5% are slower, the latency SLO is violated
+
+### 8.5 Metrics Collected
+
+The backend exports custom metrics for Prometheus:
+
+- `app_http_requests_total`
+- `app_http_request_duration_seconds`
+- `app_login_attempts_total`
+- `app_messages_created_total`
+- `app_active_socket_connections`
+
+These metrics are enough to build a dashboard for traffic, errors, latency, and messaging activity.
+
+### 8.6 Grafana Dashboard
+
+The dashboard includes:
+
+- Backend availability (`up`)
+- Traffic (`requests/sec`)
+- Error rate
+- P95 latency
+- Messages created
+- Active socket connections
+
+This covers most of the Golden Signals:
+
+- **Latency**: P95 latency panel
+- **Traffic**: requests/sec panel
+- **Errors**: error rate panel
+- **Saturation**: can be shown using Node Exporter CPU / memory metrics
+
+### 8.7 Alert Rules
+
+Two alert rules are included:
+
+1. **Critical Alert**
+   `BackendDownCritical`
+
+   Fires when the backend is unreachable for more than 1 minute.
+
+2. **Warning Alert**
+   `HighErrorRateWarning`
+
+   Fires when more than 5% of backend requests return 5xx errors for 5 minutes.
+
+### 8.8 How to Trigger an Alert for Demo
+
+**Option 1: Trigger the critical alert**
+
+1. Start the stack with Docker Compose
+2. Stop only the backend container
+3. Wait about 1 minute
+4. Prometheus should show `BackendDownCritical` as `FIRING`
+
+Example command:
+
+```bash
+docker compose stop backend
+```
+
+To recover:
+
+```bash
+docker compose start backend
+```
+
 ```
 npm run start
 ```

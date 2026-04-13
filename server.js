@@ -4,7 +4,15 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const { initSocket } = require("./backend/socket");
+const {
+  metricsMiddleware,
+  metricsHandler,
+  trackSocketConnection,
+  trackLoginAttempt,
+  trackMessageCreated
+} = require("./backend/monitoring");
 
 const connectDB = require("./backend/config/db");
 
@@ -27,17 +35,27 @@ const io = new Server(server, {
 
 initSocket(io);
 
-// connect database
-connectDB();
-
 // middlewares
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 // test route
 app.get("/", (req, res) => {
   res.send("API is running");
 });
+
+app.get("/health", (req, res) => {
+  const database = mongoose.connection.readyState === 1 ? "up" : "down";
+  const statusCode = database === "up" ? 200 : 503;
+
+  res.status(statusCode).json({
+    status: statusCode === 200 ? "ok" : "degraded",
+    database
+  });
+});
+
+app.get("/metrics", metricsHandler);
 
 // routes
 app.use("/api/auth", authRoutes);
@@ -62,14 +80,32 @@ io.use((socket, next) => {
 });
 
 io.on("connection", (socket) => {
+  trackSocketConnection(1);
+
   if (socket.user?.id) {
     socket.join(`user:${socket.user.id}`);
   }
+
+  socket.on("disconnect", () => {
+    trackSocketConnection(-1);
+  });
 });
+
+app.locals.trackLoginAttempt = trackLoginAttempt;
+app.locals.trackMessageCreated = trackMessageCreated;
 
 // server start
 const PORT = process.env.PORT || 5001;
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    process.exit(1);
+  }
+};
+
+startServer();
